@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -372,7 +372,6 @@ namespace TheChimeraProtocol.Editor
             controller.walkSpeed = 1.8f;
             controller.jogSpeed = 3.8f;
             controller.sprintSpeed = 5.8f;
-            controller.aimSpeed = 1.5f;
             controller.crouchSpeed = 1.2f;
             controller.acceleration = 10f;
             controller.deceleration = 14f;
@@ -402,12 +401,6 @@ namespace TheChimeraProtocol.Editor
                 var animator = modelInstance.GetComponent<Animator>();
                 if (animator == null) animator = modelInstance.AddComponent<Animator>();
                 animator.runtimeAnimatorController = animCtrl;
-
-                var footIK = modelInstance.AddComponent<PlayerFootIK>();
-                footIK.enableFootIK = true;
-                footIK.enablePelvisOffset = true;
-
-                var lookIK = modelInstance.AddComponent<PlayerLookAtIK>();
 
                 controller.SetAnimator(animator);
             }
@@ -511,12 +504,6 @@ namespace TheChimeraProtocol.Editor
                 if (pCtrl != null && mainCam != null)
                 {
                     pCtrl.SetCameraTransform(mainCam.transform);
-                }
-
-                var lookIK = playerInstance.GetComponentInChildren<PlayerLookAtIK>();
-                if (lookIK != null && mainCam != null)
-                {
-                    lookIK.SetCameraTransform(mainCam.transform);
                 }
             }
 

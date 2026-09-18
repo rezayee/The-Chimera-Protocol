@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using Unity.Cinemachine;
 
 namespace TheChimeraProtocol.Player
@@ -25,12 +25,6 @@ namespace TheChimeraProtocol.Player
         public float normalShoulderX = 0.45f;
         public float normalShoulderY = 0.10f;
 
-        [Header("Aiming Mode Settings (RE2 / Max Payne Style)")]
-        public float aimFOV = 50f;
-        public float aimDistance = 1.35f;
-        public float aimShoulderX = 0.55f;
-        public float aimShoulderY = 0.05f;
-
         [Header("Shoulder Switching")]
         [Tooltip("1.0 for right shoulder, -1.0 for left shoulder")]
         public float shoulderSide = 1.0f;
@@ -45,19 +39,12 @@ namespace TheChimeraProtocol.Player
         public float standingTargetHeight = 1.45f;
         public float crouchTargetHeight = 0.95f;
 
-        [Header("Procedural Aim Breathing Sway")]
-        public bool enableAimSway = true;
-        public float swayFrequency = 1.8f;
-        public float swayAmplitude = 0.015f;
-
         [Header("Transition Speed")]
         [Range(1f, 25f)] public float transitionSpeed = 10f;
 
         private PlayerController _playerController;
         private PlayerInputHandler _inputHandler;
         private float _currentShoulderSide = 1.0f;
-        private float _recoilPitch;
-        private float _recoilYaw;
 
         private void Awake()
         {
@@ -83,7 +70,6 @@ namespace TheChimeraProtocol.Player
             if (_inputHandler != null)
             {
                 _inputHandler.OnShoulderSwitchPressed += ToggleShoulder;
-                _inputHandler.OnAttackPressed += () => ApplyRecoil(1.2f, Random.Range(-0.3f, 0.3f));
             }
         }
 
@@ -100,17 +86,16 @@ namespace TheChimeraProtocol.Player
             if (cinemachineCamera == null || thirdPersonFollow == null || _playerController == null)
                 return;
 
-            bool isAiming = _playerController.IsAiming;
             bool isCrouching = _playerController.IsCrouching;
 
             // 1. Smooth Shoulder Switch Interpolation (Right <-> Left)
             _currentShoulderSide = Mathf.Lerp(_currentShoulderSide, shoulderSide, Time.deltaTime * shoulderSwitchSpeed);
 
             // 2. Base Shoulder Offsets
-            float baseX = isAiming ? aimShoulderX : normalShoulderX;
-            float baseY = isAiming ? aimShoulderY : normalShoulderY;
-            float targetDistance = isAiming ? aimDistance : normalDistance;
-            float targetFOV = isAiming ? aimFOV : normalFOV;
+            float baseX = normalShoulderX;
+            float baseY = normalShoulderY;
+            float targetDistance = normalDistance;
+            float targetFOV = normalFOV;
 
             Vector3 targetOffset = new Vector3(baseX * _currentShoulderSide, baseY, 0f);
 
@@ -132,19 +117,7 @@ namespace TheChimeraProtocol.Player
                 }
             }
 
-            // 4. Procedural Aim Breathing Sway
-            if (enableAimSway && isAiming && cameraFollowTarget != null)
-            {
-                float swayX = Mathf.Sin(Time.time * swayFrequency) * swayAmplitude;
-                float swayY = Mathf.Cos(Time.time * swayFrequency * 1.5f) * (swayAmplitude * 0.7f);
-                targetOffset += new Vector3(swayX, swayY, 0f);
-            }
-
-            // 5. Apply Recoil Impulse Recovery
-            _recoilPitch = Mathf.Lerp(_recoilPitch, 0f, 12f * Time.deltaTime);
-            _recoilYaw = Mathf.Lerp(_recoilYaw, 0f, 12f * Time.deltaTime);
-
-            // 6. Crouch Target Height Adjustment
+            // 4. Crouch Target Height Adjustment
             if (cameraFollowTarget != null)
             {
                 float targetY = isCrouching ? crouchTargetHeight : standingTargetHeight;
@@ -153,7 +126,7 @@ namespace TheChimeraProtocol.Player
                 cameraFollowTarget.localPosition = localPos;
             }
 
-            // 7. Apply to Cinemachine Components
+            // 5. Apply to Cinemachine Components
             float t = Time.deltaTime * transitionSpeed;
             cinemachineCamera.Lens.FieldOfView = Mathf.Lerp(cinemachineCamera.Lens.FieldOfView, targetFOV, t);
             thirdPersonFollow.CameraDistance = Mathf.Lerp(thirdPersonFollow.CameraDistance, targetDistance, t);
@@ -164,17 +137,6 @@ namespace TheChimeraProtocol.Player
         public void ToggleShoulder()
         {
             shoulderSide = (shoulderSide > 0f) ? -1.0f : 1.0f;
-        }
-
-        public void ApplyRecoil(float pitchKick, float yawKick)
-        {
-            _recoilPitch += pitchKick;
-            _recoilYaw += yawKick;
-
-            if (cameraFollowTarget != null)
-            {
-                cameraFollowTarget.rotation *= Quaternion.Euler(-pitchKick, yawKick, 0f);
-            }
         }
 
         public void SetCinemachineCamera(CinemachineCamera cam)

@@ -43,7 +43,6 @@ namespace TheChimeraProtocol.Player
         public float walkSpeed = 1.8f;
         public float jogSpeed = 3.8f;
         public float sprintSpeed = 5.8f;
-        public float aimSpeed = 1.5f;
         public float crouchSpeed = 1.2f;
 
         [Header("Weight and Inertia (Max Payne Style)")]
@@ -51,15 +50,13 @@ namespace TheChimeraProtocol.Player
         public float deceleration = 14f;
         public float turnSmoothTime = 0.08f;
 
-        [Header("Turn In Place (Aim Mode)")]
-        [Tooltip("Angle difference in Aim Mode before character steps to align with crosshair")]
-        public float turnInPlaceAngleThreshold = 75f;
-        [Tooltip("Rotation speed (deg/s) for Aim Mode fast alignment")]
-        public float turnInPlaceSpeed = 360f;
-        [Tooltip("Protected window in seconds at the start of a turn where locomotion input will not interrupt")]
-        public float turnProtectedWindow = 0.18f;
-        [Tooltip("Movement input sqrMagnitude threshold to interrupt a turn after the protected window")]
-        public float turnInterruptMoveThreshold = 0.05f;
+        [Header("Turn-In-Place Settings")]
+        [Tooltip("Enable or disable Idle body Turn-In-Place behavior when rotating the camera")]
+        [SerializeField] private bool enableTurnInPlace = true;
+        [Tooltip("Initial window of time (seconds) during turn animation where movement input will not immediately cancel")]
+        public float turnProtectedWindow = 0.15f;
+        [Tooltip("Input stick magnitude squared required to interrupt a turn after the protected window")]
+        public float turnInterruptMoveThreshold = 0.25f;
 
         [Header("Turn Classification Thresholds (Configurable)")]
         [Tooltip("Minimum angle difference to trigger exploration Turn-In-Place")]
@@ -108,12 +105,10 @@ namespace TheChimeraProtocol.Player
 
         // Public Properties for Camera and FX
         public bool IsGrounded { get; private set; }
-        public bool IsAiming => _inputHandler != null && _inputHandler.AimHeld;
         public bool IsCrouching => _inputHandler != null && _inputHandler.CrouchToggled;
-        public bool IsSprinting => _inputHandler != null && _inputHandler.SprintHeld && !IsAiming && !IsCrouching && _inputHandler.MoveInput.y > 0.1f;
+        public bool IsSprinting => _inputHandler != null && _inputHandler.SprintHeld && !IsCrouching && _inputHandler.MoveInput.y > 0.1f;
         public float CurrentSpeed => _horizontalVelocity.magnitude;
         public Vector3 Velocity => _characterController != null ? _characterController.velocity : Vector3.zero;
-        public Vector2 StrafeValues => _strafeValues;
         public float TurnAngleDelta => _turnAngleDelta;
         public float CurrentTurnAngle => _turnAngleToTarget;
         public bool IsTurningInPlace => _isTurningInPlace;
@@ -131,13 +126,13 @@ namespace TheChimeraProtocol.Player
         public float AlignTimer => _alignTimer;
         public float CurrentVisualYaw => _currentVisualYaw;
         public bool ShowTurnDebugHUD { get => showTurnDebugHUD; set => showTurnDebugHUD = value; }
+        public bool EnableTurnInPlace { get => enableTurnInPlace; set => enableTurnInPlace = value; }
 
         private CharacterController _characterController;
         private PlayerInputHandler _inputHandler;
         private Vector3 _horizontalVelocity;
         private float _verticalVelocity = -4.0f;
         private float _turnSmoothVelocity;
-        private Vector2 _strafeValues;
         private float _turnAngleDelta;
         private float _turnAngleToTarget;
         private float _previousYaw;
@@ -158,9 +153,6 @@ namespace TheChimeraProtocol.Player
 
         // Animator Parameter Hashes
         private static readonly int AnimSpeed = Animator.StringToHash("Speed");
-        private static readonly int AnimStrafeX = Animator.StringToHash("MoveX");
-        private static readonly int AnimStrafeZ = Animator.StringToHash("MoveZ");
-        private static readonly int AnimIsAiming = Animator.StringToHash("IsAiming");
         private static readonly int AnimIsGrounded = Animator.StringToHash("IsGrounded");
         private static readonly int AnimIsCrouching = Animator.StringToHash("IsCrouching");
         private static readonly int AnimTurn = Animator.StringToHash("Turn");
@@ -168,7 +160,6 @@ namespace TheChimeraProtocol.Player
         private static readonly int AnimIsTurningInPlace = Animator.StringToHash("IsTurningInPlace");
         private static readonly int AnimTurnType = Animator.StringToHash("TurnType");
         private static readonly int AnimTurnDirection = Animator.StringToHash("TurnDirection");
-        private static readonly int AnimShootTrigger = Animator.StringToHash("Shoot");
 
         private void Awake()
         {
@@ -203,11 +194,6 @@ namespace TheChimeraProtocol.Player
 
             _previousYaw = transform.eulerAngles.y;
             _verticalVelocity = -groundStickForce;
-
-            if (_inputHandler != null)
-            {
-                _inputHandler.OnAttackPressed += HandleAttack;
-            }
         }
 
         private void OnValidate()
@@ -300,14 +286,6 @@ namespace TheChimeraProtocol.Player
             );
         }
 
-        private void OnDestroy()
-        {
-            if (_inputHandler != null)
-            {
-                _inputHandler.OnAttackPressed -= HandleAttack;
-            }
-        }
-
         private void Update()
         {
             CheckGrounded();
@@ -388,11 +366,7 @@ namespace TheChimeraProtocol.Player
             float targetSpeed = 0f;
             if (inputMagnitude > 0.01f)
             {
-                if (IsAiming)
-                {
-                    targetSpeed = aimSpeed;
-                }
-                else if (IsCrouching)
+                if (IsCrouching)
                 {
                     targetSpeed = crouchSpeed;
                 }
@@ -429,17 +403,6 @@ namespace TheChimeraProtocol.Player
             float rate = (targetSpeed > 0.01f) ? acceleration : deceleration;
             _horizontalVelocity = Vector3.MoveTowards(_horizontalVelocity, targetVelocity, rate * Time.deltaTime);
 
-            // Calculate Strafe Values
-            if (IsAiming && moveDir.sqrMagnitude > 0.001f)
-            {
-                Vector3 localMove = transform.InverseTransformDirection(moveDir);
-                _strafeValues = new Vector2(localMove.x, localMove.z) * (targetSpeed / aimSpeed);
-            }
-            else
-            {
-                _strafeValues = Vector2.zero;
-            }
-
             // Move CharacterController with horizontal and vertical velocity
             Vector3 finalMove = _horizontalVelocity + Vector3.up * _verticalVelocity;
             _characterController.Move(finalMove * Time.deltaTime);
@@ -449,48 +412,7 @@ namespace TheChimeraProtocol.Player
         {
             Vector2 input = _inputHandler != null ? _inputHandler.MoveInput : Vector2.zero;
 
-            if (IsAiming)
-            {
-                // In Aim Mode: Cancel any pending exploration turn
-                if (_isTurningInPlace && _currentTurnCurve != null)
-                {
-                    CancelExplorationTurnInPlace();
-                }
-
-                // In Aim Mode: Align with Camera Forward & handle Aim Turn-In-Place
-                if (mainCameraTransform != null)
-                {
-                    float camYaw = mainCameraTransform.eulerAngles.y;
-                    _turnAngleToTarget = Mathf.DeltaAngle(transform.eulerAngles.y, camYaw);
-
-                    if (Mathf.Abs(_turnAngleToTarget) > turnInPlaceAngleThreshold)
-                    {
-                        _isTurningInPlace = true;
-                        _targetTurnYaw = camYaw;
-                    }
-
-                    if (_isTurningInPlace)
-                    {
-                        float newYaw = Mathf.MoveTowardsAngle(transform.eulerAngles.y, _targetTurnYaw, turnInPlaceSpeed * Time.deltaTime);
-                        transform.rotation = Quaternion.Euler(0f, newYaw, 0f);
-
-                        if (Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, _targetTurnYaw)) < 3f)
-                        {
-                            _isTurningInPlace = false;
-                        }
-                    }
-                    else
-                    {
-                        Vector3 camForward = Vector3.ProjectOnPlane(mainCameraTransform.forward, Vector3.up).normalized;
-                        if (camForward.sqrMagnitude > 0.001f)
-                        {
-                            Quaternion targetRot = Quaternion.LookRotation(camForward);
-                            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 10f * Time.deltaTime);
-                        }
-                    }
-                }
-            }
-            else if (input.sqrMagnitude > 0.01f && _horizontalVelocity.sqrMagnitude > 0.05f)
+            if (input.sqrMagnitude > 0.01f && _horizontalVelocity.sqrMagnitude > 0.05f)
             {
                 // In Exploration Moving: Smoothly turn towards velocity vector
                 if (_isTurningInPlace)
@@ -545,14 +467,6 @@ namespace TheChimeraProtocol.Player
             }
         }
 
-        private void HandleAttack()
-        {
-            if (characterAnimator != null)
-            {
-                characterAnimator.SetTrigger(AnimShootTrigger);
-            }
-        }
-
         private void CalculateAngularVelocity()
         {
             float currentYaw = transform.eulerAngles.y;
@@ -565,9 +479,6 @@ namespace TheChimeraProtocol.Player
             if (characterAnimator == null) return;
 
             characterAnimator.SetFloat(AnimSpeed, CurrentSpeed);
-            characterAnimator.SetFloat(AnimStrafeX, _strafeValues.x);
-            characterAnimator.SetFloat(AnimStrafeZ, _strafeValues.y);
-            characterAnimator.SetBool(AnimIsAiming, IsAiming);
             characterAnimator.SetBool(AnimIsGrounded, IsGrounded);
             characterAnimator.SetBool(AnimIsCrouching, IsCrouching);
             characterAnimator.SetBool(AnimIsTurningInPlace, _isTurningInPlace);
@@ -645,7 +556,7 @@ namespace TheChimeraProtocol.Player
 
         public void RequestExplorationTurnInPlace(float targetYaw, float signedAngle)
         {
-            if (IsAiming || IsCrouching || CurrentSpeed > 0.1f || _isTurningInPlace) return;
+            if (!enableTurnInPlace || IsCrouching || CurrentSpeed > 0.1f || _isTurningInPlace) return;
 
             if (!ClassifyTurn(signedAngle, out TurnType turnType, out TurnDirection direction, out TurnProfileData profile))
             {
