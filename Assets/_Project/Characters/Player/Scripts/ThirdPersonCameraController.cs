@@ -25,6 +25,12 @@ namespace TheChimeraProtocol.Player
         public float normalShoulderX = 0.45f;
         public float normalShoulderY = 0.10f;
 
+        [Header("Aim OTS Mode Settings")]
+        public float aimFOV = 48f;
+        public float aimDistance = 1.45f;
+        public float aimShoulderX = 0.55f;
+        public float aimShoulderY = 0.14f;
+
         [Header("Shoulder Switching")]
         [Tooltip("1.0 for right shoulder, -1.0 for left shoulder")]
         public float shoulderSide = 1.0f;
@@ -44,6 +50,7 @@ namespace TheChimeraProtocol.Player
 
         private PlayerController _playerController;
         private PlayerInputHandler _inputHandler;
+        private TheChimeraProtocol.Weapons.PlayerWeaponController _weaponController;
         private float _currentShoulderSide = 1.0f;
 
         private void Awake()
@@ -87,15 +94,17 @@ namespace TheChimeraProtocol.Player
                 return;
 
             bool isCrouching = _playerController.IsCrouching;
+            if (_weaponController == null) _weaponController = GetComponent<TheChimeraProtocol.Weapons.PlayerWeaponController>();
+            bool isAiming = _weaponController != null && _weaponController.IsAiming;
 
             // 1. Smooth Shoulder Switch Interpolation (Right <-> Left)
             _currentShoulderSide = Mathf.Lerp(_currentShoulderSide, shoulderSide, Time.deltaTime * shoulderSwitchSpeed);
 
             // 2. Base Shoulder Offsets
-            float baseX = normalShoulderX;
-            float baseY = normalShoulderY;
-            float targetDistance = normalDistance;
-            float targetFOV = normalFOV;
+            float baseX = isAiming ? aimShoulderX : normalShoulderX;
+            float baseY = isAiming ? aimShoulderY : normalShoulderY;
+            float targetDistance = isAiming ? aimDistance : normalDistance;
+            float targetFOV = isAiming ? aimFOV : normalFOV;
 
             Vector3 targetOffset = new Vector3(baseX * _currentShoulderSide, baseY, 0f);
 
@@ -130,8 +139,19 @@ namespace TheChimeraProtocol.Player
             float t = Time.deltaTime * transitionSpeed;
             cinemachineCamera.Lens.FieldOfView = Mathf.Lerp(cinemachineCamera.Lens.FieldOfView, targetFOV, t);
             thirdPersonFollow.CameraDistance = Mathf.Lerp(thirdPersonFollow.CameraDistance, targetDistance, t);
-            thirdPersonFollow.ShoulderOffset = Vector3.Lerp(thirdPersonFollow.ShoulderOffset, targetOffset, t);
+            _currentRecoilOffset = Vector3.Lerp(_currentRecoilOffset, Vector3.zero, Time.deltaTime * recoilRecoverySpeed);
+            thirdPersonFollow.ShoulderOffset = Vector3.Lerp(thirdPersonFollow.ShoulderOffset, targetOffset + _currentRecoilOffset, t);
             thirdPersonFollow.CameraSide = (_currentShoulderSide + 1f) * 0.5f; // Map -1..1 to 0..1 for Cinemachine
+        }
+
+        [Header("Procedural Recoil Shake")]
+        [SerializeField] private float recoilRecoverySpeed = 12f;
+        private Vector3 _currentRecoilOffset;
+
+        public void ApplyRecoil(float verticalKick, float horizontalKick)
+        {
+            float randomX = Random.Range(-horizontalKick, horizontalKick);
+            _currentRecoilOffset += new Vector3(randomX * 0.05f, verticalKick * 0.06f, -verticalKick * 0.04f);
         }
 
         public void ToggleShoulder()

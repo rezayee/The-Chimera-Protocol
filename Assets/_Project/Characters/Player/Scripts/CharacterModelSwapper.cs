@@ -27,6 +27,7 @@ namespace TheChimeraProtocol.Player
 
         [Header("Components on Player_Character")]
         [SerializeField] private PlayerController playerController;
+        [SerializeField] private TheChimeraProtocol.Weapons.PlayerWeaponController playerWeaponController;
 
         [Header("New Model Source")]
         [Tooltip("Prefab or GameObject of the new humanoid character model to swap in")]
@@ -34,6 +35,12 @@ namespace TheChimeraProtocol.Player
 
         public Transform VisualModelRoot => visualModelRoot;
         public GameObject NewModelPrefab { get => newModelPrefab; set => newModelPrefab = value; }
+
+        /// <summary>
+        /// Fired whenever a new character model is swapped in and configured.
+        /// Useful for weapon sockets and accessories to rebind dynamically.
+        /// </summary>
+        public event System.Action<Animator> OnModelSwapped;
 
         private void Reset()
         {
@@ -55,6 +62,11 @@ namespace TheChimeraProtocol.Player
             if (playerController == null)
             {
                 playerController = GetComponent<PlayerController>();
+            }
+
+            if (playerWeaponController == null)
+            {
+                playerWeaponController = GetComponent<TheChimeraProtocol.Weapons.PlayerWeaponController>();
             }
 
 #if UNITY_EDITOR
@@ -232,9 +244,18 @@ namespace TheChimeraProtocol.Player
                 playerController.SetAnimator(animator);
             }
 
+            if (playerWeaponController != null)
+            {
+#if UNITY_EDITOR
+                Undo.RecordObject(playerWeaponController, "Rebind PlayerWeaponController Model");
+#endif
+                playerWeaponController.HandleModelSwapped(animator);
+            }
+
 #if UNITY_EDITOR
             EditorUtility.SetDirty(modelObject);
             if (playerController != null) EditorUtility.SetDirty(playerController);
+            if (playerWeaponController != null) EditorUtility.SetDirty(playerWeaponController);
             if (!Application.isPlaying)
             {
                 UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
@@ -242,6 +263,7 @@ namespace TheChimeraProtocol.Player
 #endif
 
             Debug.Log($"[CharacterModelSwapper] Successfully configured character model: '{modelObject.name}'!", modelObject);
+            OnModelSwapped?.Invoke(animator);
             return true;
         }
 
